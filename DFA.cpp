@@ -10,17 +10,6 @@ void DFAm (const double *x, int x_length, const unsigned int *scale,
     Map<const ArrayXd> xvec(x, x_length);
     
     ArrayXXd DFA_result(q_length, scale_length);
-	
-	
-	// Declare indices for better polyfit and create vandermonde matrix
-	const unsigned int scale_max = scale[scale_length-1];
-	const VectorXd idx = VectorXd::LinSpaced(scale_max, 0, scale_max-1);
-	MatrixXd Vdm( scale_max, m+1 );
-	// Vdm = [idx^m, idx^(m-1), idx^(m-2), ..., idx^0]
-	Vdm.col(m).setOnes();
-	for (int j = m-1; j >=0; --j) {
-		Vdm.col(j) = (idx.array() * Vdm.col(j+1).array()).matrix();
-	}    
 
     for (unsigned int i = 0; i < scale_length; ++i)
     {
@@ -36,7 +25,16 @@ void DFAm (const double *x, int x_length, const unsigned int *scale,
         ArrayXd F2(2*Ns);
         
 		// QR decomposition is same for all windows, since only dependent on window size
-		const HouseholderQR<MatrixXd> QR (Vdm.topRows(w));
+		// Declare indices for better polyfit and create vandermonde matrix
+		const VectorXd idx = VectorXd::LinSpaced(w, -w/2, w/2);
+		MatrixXd Vdm( w, m+1 );
+		// Vdm = [idx^m, idx^(m-1), idx^(m-2), ..., idx^0]
+		Vdm.col(m).setOnes();
+		for (int j = m-1; j >=0; --j) {
+			Vdm.col(j) = (idx.array() * Vdm.col(j+1).array()).matrix();
+		}    
+
+		const HouseholderQR<MatrixXd> QR (Vdm);
 
         // Loop through the windows (forwards and backwards)
         for (unsigned int v = 0; v < Ns; ++v) {
@@ -47,11 +45,11 @@ void DFAm (const double *x, int x_length, const unsigned int *scale,
             // Calculate window variance after detrending
             const VectorXd x1 = xvec.segment(fwd_from, w).matrix();
             const VectorXd poly_coeff1 = QR.solve( x1 );
-            F2[v] = (x1 - Vdm.topRows(w) * poly_coeff1).array().square().sum() / w;
+            F2[v] = (x1 - Vdm * poly_coeff1).array().square().sum() / w;
             
             const VectorXd x2 = xvec.segment(bw_from, w).matrix();
             const VectorXd poly_coeff2 = QR.solve( x2 );
-            F2[v+Ns] = (x2 - Vdm.topRows(w) * poly_coeff2).array().square().sum() / w;
+            F2[v+Ns] = (x2 - Vdm * poly_coeff2).array().square().sum() / w;
         }
         
         // 
